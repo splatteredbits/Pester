@@ -1,6 +1,86 @@
-## Unreleased 
+## 3.3.11 (September 8, 2015)
+  - Fixed a bug where mocking New-Object would cause a stack overflow.  [GH-405]
+
+## 3.3.10 (August 14, 2015)
+  - Fully qualified calls to Get-Content within Mocking code, to avoid triggering client's mocked versions of that command. [GH-362]
+  - Fixed a scoping error when calling the original command if no parameter filters match the call.  [GH-362]
+  - Added Ignore alias for -Skip on the It command, and updated NUnit output to flag these tests as Ignored instead of Skipped, for better integration with things like TeamCity.  [GH-368]
+  - Added support for Unicode to Should Contain. [GH-378]
+  - Added support for side-by-side installations to chocolateyInstall.ps1.  [GH-401]
+
+## 3.3.9 (May 23, 2015)
+  - Fixed Describe's handling of TestName filter when multiple strings are passed to Invoke-Pester's -TestName parameter.
+  - Failing BeforeEach or AfterEach will fail the test [GH-326]
+  - Added BeOfType operator to the Should command. [GH-327]
+  - Fixed BeforeEach / etc parsing in PSv3+ so breakpoints and automatic variables ($PSCommandPath, etc) will work properly.  [GH-333]
+  - Fixed bug in 'Should Be' when comparing strings, and null or empty strings are piped in to the Should command.  [GH-333]
+  - Added some calls to Write-Progress in the It command.  [GH-322]
+  - Bug fix when mocking functions that are in the global scope; the original functions were being lost when the Describe block ended.  [GH-323]
+  - Improved failed assertion output from Assert-MockCalled; now behaves more like Should.  [GH-324]
+  - Added -ExclusiveFilter parameter to Assert-MockCalled.  Works like -ParameterFilter, except there also must not be any calls to the mocked command which do _not_ match the filter.
+  - Added the "bin" folder to the PATH environment variable when installing from Chocolatey.  Also removed the hard-coded -OutputXml and -Strict parameters from this file; only -EnableExit is always used from the bat file now.  [GH-281]
+  - PassThru object (when used in conjunction with -CodeCoverage) now includes information about Hit commands in addition to Missed commands.  [GH-341]
+  - Improvements to support for mocking advanced fynctions with dynamic parameters.  [GH-346]
+  - Fix for PowerShell v2 bug when mocking commands that have an -ArgumentList parameter with validation attributes.  [GH-354]
+  - Fixed stack trace output when the call to Should is in a file other than the file that contains the It block. [GH-358]
+
+## 3.3.8 (April 15, 2015)
+  - Further mocking fixes around the use of $ExecutionContext in client scope.  [GH-307]
+
+## 3.3.7 (April 15, 2015)
+  - Added workaround for GetDynamicParameters() bug that was affecting mocks on the ActiveDirectory module in Windows 7. [GH-295]
+  - Revised Mocking code to avoid potential bugs when functions define parameters named $ExecutionContext or $MyInvocation. [GH-304]
+  - Mocked functions no longer call Get-MockDynamicParameters if the original function had no dynamicparam block. [GH-306]
+
+## 3.3.6 (March 19, 2015)
+  - Fix for mocking aliases for commands that are in scopes that Pester can't normally see. [GH-267]
+  - Added line information to test failure output in Should assertion failures. [GH-266]
+  - Added support for passing named parameters or positional arguments to test scripts, and for calling test scripts that are not named *.Tests.ps1.  [GH-272]
+  - Made Pester compliant with StrictMode.  [GH-274]
+  - Improved error message when InModuleScope finds multiple modules loaded with the same name. [GH-276]
+  - Updated build script to allow for custom root folder in the nupkg. [GH-254]
+  - Improved error messages for InModuleScope and Mock -ModuleName when multiple modules with the same name are loaded. Also enabled these commands to work if only one of the loaded modules is a Script module. [GH-278]
+  - Added some graceful handling of test code that has a misplaced break or continue statement. [GH-290]
+
+## 3.3.5 (January 23, 2015)
+  - Updated tests to allow PRs to be automatically tested, with status updates to GitHub, by our CI server.
+  - Added Snippets directory to the nuget packages, and updated code so the module won't fail to import if Snippets are missing.
+
+## 3.3.4 (January 22, 2015)
+  - No changes; publishing again to fix broken PowerShellGet upload.
+
+## 3.3.2 (January 19, 2015)
+  - Performance Improvements
+
+## 3.3.1 (January 12, 2015)
+  - Import ISESteroids snippets on load
+  - Updated Code Coverage analysis to be compatible with the PowerShell 5.0 AST when analyzing DSC configurations. [GH-249]
+
+## 3.3.0 (January 10, 2015)
+  - Validate manifest version, changelog version and tag version
+  - Added BeforeAll and AfterAll commands
+  - Updated code to take advantage of -ErrorAction Ignore in PowerShell v3+.
+  - Add ISESteroids snippets but do not import them
+
+## 3.2.0 (December 3, 2014)
+  - Added BeGreaterThan and BeLessThan assertions to Should.
+  - Add -Quiet parameter for Invoke-Pester that disables the output written to screen by Write-Host [GH-223]
+  - Fix Error output for TestDrive [GH-232]
+  - Add ExcludeTagFilter parameter [GH-234]
+  - Add different color schemes for dark and light backgrounds
+
+## 3.1.1 (October 29, 2014)
+  - Fix Skipped and Pending
+  - Fix output format on non-US systems
+
+## 3.1 (October 23, 2014)
   - Fix mocking of Get-ItemProperty
   - Fix mocking commands with parameters named $FunctionName, $ModuleName or $ArgumentList under some circumstances. [GH-215]
+  - Add Skipped and Pending test results
+  - Added support for parameterized tests to the It command.
+  - Deprecated -OutputXml parameter, added -OutputFile and -OutputFormat parameters.
+  - Added new updated NUnit export format.  Original format still available as -OutputFormat LegacyNUnitXml.
+  - Stopped forcing -ParameterFilter blocks to return explicit booleans, preventing some unnecessary null reference exceptions.
 
 ## 3.0.3 (October 12, 2014)
   - Can be installed from PowerShellGet

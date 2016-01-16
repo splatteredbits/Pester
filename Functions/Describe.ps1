@@ -65,14 +65,14 @@ about_TestDrive
         [ScriptBlock] $Fixture = $(Throw "No test script block is provided. (Have you put the open curly brace on the next line?)")
     )
 
-    if ($null -eq (Get-Variable -Name Pester -ValueOnly -ErrorAction SilentlyContinue))
+    if ($null -eq (Get-Variable -Name Pester -ValueOnly -ErrorAction $script:IgnoreErrorPreference))
     {
         # User has executed a test script directly instead of calling Invoke-Pester
         $Pester = New-PesterState -Path (Resolve-Path .) -TestNameFilter $null -TagFilter @() -SessionState $PSCmdlet.SessionState
         $script:mockTable = @{}
     }
 
-    if($Pester.TestNameFilter -and ($Name -notlike $Pester.TestNameFilter))
+    if($Pester.TestNameFilter-and -not ($Pester.TestNameFilter | Where-Object { $Name -like $_ }))
     {
         #skip this test
         return
@@ -80,26 +80,39 @@ about_TestDrive
 
     #TODO add test to test tags functionality
     if($Pester.TagFilter -and @(Compare-Object $Tags $Pester.TagFilter -IncludeEqual -ExcludeDifferent).count -eq 0) {return}
+    if($Pester.ExcludeTagFilter -and @(Compare-Object $Tags $Pester.ExcludeTagFilter -IncludeEqual -ExcludeDifferent).count -gt 0) {return}
 
     $Pester.EnterDescribe($Name)
-    
+
     $Pester.CurrentDescribe | Write-Describe
-    New-TestDrive
+    $testDriveAdded = $false
 
     try
     {
+        New-TestDrive
+        $testDriveAdded = $true
+
         Add-SetupAndTeardown -ScriptBlock $Fixture
-        $null = & $Fixture
+        Invoke-TestGroupSetupBlocks -Scope $pester.Scope
+
+        do
+        {
+            $null = & $Fixture
+        } until ($true)
     }
     catch
     {
         $firstStackTraceLine = $_.InvocationInfo.PositionMessage.Trim() -split '\r?\n' | Select-Object -First 1
-        $Pester.AddTestResult('Error occurred in Describe block', $false, $null, $_.Exception.Message, $firstStackTraceLine)
+        $Pester.AddTestResult('Error occurred in Describe block', "Failed", $null, $_.Exception.Message, $firstStackTraceLine)
         $Pester.TestResult[-1] | Write-PesterResult
+    }
+    finally
+    {
+        Invoke-TestGroupTeardownBlocks -Scope $pester.Scope
+        if ($testDriveAdded) { Remove-TestDrive }
     }
 
     Clear-SetupAndTeardown
-    Remove-TestDrive
     Exit-MockScope
     $Pester.LeaveDescribe()
 }

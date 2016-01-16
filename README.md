@@ -1,3 +1,5 @@
+__Build Status:__ [![Build status](https://build.powershell.org/guestAuth/app/rest/builds/buildType:(id:Pester_TestPester)/statusIcon)](https://build.powershell.org/project.html?projectId=Pester&tab=projectOverview&guest=1)
+
 Pester 3.0 has been released!  To see a list of changes in this version, refer to the [What's New in Pester 3.0?](https://github.com/pester/Pester/wiki/What's-New-in-Pester-3.0%3F) Wiki page.
 
 ---
@@ -6,7 +8,7 @@ Pester
 =======
 Pester provides a framework for **running Unit Tests to execute and validate PowerShell commands inside of PowerShell**. Pester follows a file naming convention for naming tests to be discovered by pester at test time and a simple set of functions that expose a Testing DSL for isolating, running, evaluating and reporting the results of Powershell commands.
 
-Pester tests can execute any command or script that is accesible to a pester test file. This can include functions, Cmdlets, Modules and scripts. Pester can be run in ad hoc style in a console or **it can be integrated into the Build scripts of a Continuous Integration system**.
+Pester tests can execute any command or script that is accessible to a pester test file. This can include functions, Cmdlets, Modules and scripts. Pester can be run in ad hoc style in a console or **it can be integrated into the Build scripts of a Continuous Integration system**.
 
 **Pester also contains a powerful set of Mocking Functions** that allow tests to mimic and mock the functionality of any command inside of a piece of powershell code being tested.
 
@@ -66,20 +68,22 @@ Describe "BuildIfChanged" {
 
 Running Tests
 -------------
-    C:\PS>./bin/pester.bat
+    C:\PS> Invoke-Pester
 
-This will run all tests inside of files containing *.Tests.* recursively from the current directory downwards and print a report of all failing and passing tests to the console.
+This will run all tests inside of files named *.Tests.ps1 recursively from the current directory downwards and print a report of all failing and passing tests to the console.
 
 Continuous Integration with Pester
 -----------------------------------
 
-Pester integrates well with almost any build automation solution. You could create a MSBuild target that calls Pester's convenience Batch file:
+Pester integrates well with almost any build automation solution.  There are several options for this integration:
 
-    <Target Name="Tests">
-    <Exec Command="cmd /c $(baseDir)pester\bin\pester.bat" />
-    </Target>
+- The `-OutputFile` parameter allows you to export data about the test execution.  Currently, this parameter allows you to produce NUnit-style XML output, which any modern CI solution should be able to read.
+- The `-PassThru` parameter can be used if your CI solution supports running PowerShell code directly.  After Pester finishes running, check the FailedCount property on the object to determine whether any tests failed, and take action from there.
+- The `-EnableExit` switch causes Pester to exit the current PowerShell session with an error code.  This error code will be the number of failed tests; 0 indicates success.
 
-This will start a powershell session, import the Pester Module and call invoke pester within the current directory. If any test fails, it will return an exit code equal to the number of failed tests and all test 	results will be saved to Test.xml using NUnit's Schema allowing you to plug these results nicely into most Build systems like CruiseControl, [TeamCity](https://github.com/pester/Pester/wiki/Showing-Test-Results-in-TeamCity), TFS or Jenkins.
+As an example, there is also a file named `Pester.bat` in the `bin` folder which shows how you might integrate with a CI solution that does not support running PowerShell directly.  By wrapping a call to Invoke-Pester in a batch file, and making sure that batch file returns a non-zero exit code if any tests fail, you can still use Pester even when limited to commands run from cmd.exe in your CI jobs.
+
+Whenever possible, it's better to run Invoke-Pester directly (either in an interactive PowerShell session, or using CI software that supports running PowerShell steps in jobs.)  This is the method that we test and support in our releases.
 
 Some further reading and resources:
 -----------------------------------

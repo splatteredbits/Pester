@@ -94,16 +94,6 @@ function Get-CoverageInfoFromDictionary
     return New-CoverageInfo -Path $path -StartLine $startLine -EndLine $endLine -Function $function
 }
 
-function Get-DictionaryValueFromFirstKeyFound
-{
-    param ([System.Collections.IDictionary] $Dictionary, [object[]] $Key)
-
-    foreach ($keyToTry in $Key)
-    {
-        if ($Dictionary.Contains($keyToTry)) { return $Dictionary[$keyToTry] }
-    }
-}
-
 function Convert-UnknownValueToInt
 {
     param ([object] $Value, [int] $DefaultValue = 0)
@@ -203,7 +193,21 @@ function Get-CommandsInFile
     $tokens = $null
     $ast = [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref] $tokens, [ref] $errors)
 
-    $predicate = { $args[0] -is [System.Management.Automation.Language.CommandBaseAst] }
+    if ($PSVersionTable.PSVersion.Major -ge 5)
+    {
+        # In PowerShell 5.0, dynamic keywords for DSC configurations are represented by the DynamicKeywordStatementAst
+        # class.  They still trigger breakpoints, but are not a child class of CommandBaseAst anymore.
+
+        $predicate = {
+            $args[0] -is [System.Management.Automation.Language.DynamicKeywordStatementAst] -or
+            $args[0] -is [System.Management.Automation.Language.CommandBaseAst]
+        }
+    }
+    else
+    {
+        $predicate = { $args[0] -is [System.Management.Automation.Language.CommandBaseAst] }
+    }
+
     $searchNestedScriptBlocks = $true
     $ast.FindAll($predicate, $searchNestedScriptBlocks)
 }
@@ -310,7 +314,7 @@ function IsIgnoredCommand
 
         if (IsChildOfHashtableDynamicKeyword -Command $Command)
         {
-            # The lines inside DSC resource declarations don't trigger their breakpooints when executed,
+            # The lines inside DSC resource declarations don't trigger their breakpoints when executed,
             # just like the "configuration" keyword itself.  I don't know why, at this point, but just like
             # configuration, we'll ignore it so it doesn't clutter up the coverage analysis with useless junk.
             return $true
@@ -333,11 +337,25 @@ function IsChildOfHashtableDynamicKeyword
 
     for ($ast = $Command.Parent; $null -ne $ast; $ast = $ast.Parent)
     {
-        if ($ast -is [System.Management.Automation.Language.CommandAst] -and
-            $null -ne $ast.DefiningKeyword -and
-            $ast.DefiningKeyword.BodyMode -eq [System.Management.Automation.Language.DynamicKeywordBodyMode]::Hashtable)
+        if ($PSVersionTable.PSVersion.Major -ge 5)
         {
-            return $true
+            # The ast behaves differently for DSC resources with version 5+.  There's a new DynamicKeywordStatementAst class,
+            # and they no longer are represented by CommandAst objects.
+
+            if ($ast -is [System.Management.Automation.Language.DynamicKeywordStatementAst] -and
+                $ast.CommandElements[-1] -is [System.Management.Automation.Language.HashtableAst])
+            {
+                return $true
+            }
+        }
+        else
+        {
+            if ($ast -is [System.Management.Automation.Language.CommandAst] -and
+                $null -ne $ast.DefiningKeyword -and
+                $ast.DefiningKeyword.BodyMode -eq [System.Management.Automation.Language.DynamicKeywordBodyMode]::Hashtable)
+            {
+                return $true
+            }
         }
     }
 
@@ -456,6 +474,12 @@ function Get-CoverageMissedCommands
     $CommandCoverage | Where-Object { $_.Breakpoint.HitCount -eq 0 }
 }
 
+function Get-CoverageHitCommands
+{
+    param ([object[]] $CommandCoverage)
+    $CommandCoverage | Where-Object { $_.Breakpoint.HitCount -gt 0 }
+}
+
 function Get-CoverageReport
 {
     param ([object] $PesterState)
@@ -463,6 +487,7 @@ function Get-CoverageReport
     $totalCommandCount = $PesterState.CommandCoverage.Count
 
     $missedCommands = @(Get-CoverageMissedCommands -CommandCoverage $PesterState.CommandCoverage | Select-Object File, Line, Function, Command)
+    $hitCommands = @(Get-CoverageHitCommands -CommandCoverage $PesterState.CommandCoverage | Select-Object File, Line, Function, Command)
     $analyzedFiles = @($PesterState.CommandCoverage | Select-Object -ExpandProperty File -Unique)
     $fileCount = $analyzedFiles.Count
 
@@ -474,6 +499,7 @@ function Get-CoverageReport
         NumberOfCommandsExecuted = $executedCommandCount
         NumberOfCommandsMissed   = $missedCommands.Count
         MissedCommands           = $missedCommands
+        HitCommands              = $hitCommands
         AnalyzedFiles            = $analyzedFiles
     }
 }
@@ -503,15 +529,15 @@ function Show-CoverageReport
         'Command'
     )
 
-    Write-Host ''
-    Write-Host 'Code coverage report:'
-    Write-Host "Covered $executedPercent of $totalCommandCount analyzed command$commandPlural in $fileCount file$filePlural."
+    Write-Screen ''
+    Write-Screen 'Code coverage report:'
+    Write-Screen "Covered $executedPercent of $totalCommandCount analyzed command$commandPlural in $fileCount file$filePlural."
 
     if ($CoverageReport.MissedCommands.Count -gt 0)
     {
-        Write-Host ''
-        Write-Host 'Missed commands:'
-        $report | Format-Table -AutoSize | Out-Host
+        Write-Screen ''
+        Write-Screen 'Missed commands:'
+        $report | Format-Table -AutoSize | Out-String | Write-Screen
     }
 }
 

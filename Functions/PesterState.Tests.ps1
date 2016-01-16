@@ -2,46 +2,43 @@ Set-StrictMode -Version Latest
 
 InModuleScope Pester {
     Describe "New-PesterState" {
-        it "Path is mandatory parameter" {
-            (get-command New-PesterState ).Parameters.Path.ParameterSets.__AllParameterSets.IsMandatory | Should Be $true
-        }
-
-        Context "Path parameter is set" {
-            it "sets the path property" {
-                $p = new-pesterstate -path "path"
-                $p.Path | should be  "path"
-            }
-        }
-
-        Context "Path and TestNameFilter parameter is set" {
-            $p = new-pesterstate -path "path" -TestNameFilter "filter"
-
-            it "sets the path property" {
-                $p.Path | should be  "path"
-            }
+        Context "TestNameFilter parameter is set" {
+            $p = new-pesterstate -TestNameFilter "filter"
 
             it "sets the TestNameFilter property" {
                 $p.TestNameFilter | should be "filter"
             }
 
         }
-        Context "Path and TagFilter parameter is set" {
-            $p = new-pesterstate -path "path" -TagFilter "tag","tag2"
-
-            it "sets the path property" {
-                $p.Path | should be  "path"
-            }
+        Context "TagFilter parameter is set" {
+            $p = new-pesterstate -TagFilter "tag","tag2"
 
             it "sets the TestNameFilter property" {
                 $p.TagFilter | should be ("tag","tag2")
             }
         }
-        Context "Path TestNameFilter and TagFilter parameter is set" {
-            $p = new-pesterstate -path "path" -TagFilter "tag","tag2" -testnamefilter "filter"
 
-            it "sets the path property" {
-                $p.Path | should be  "path"
+        Context "ExcludeTagFilter parameter is set" {
+            $p = new-pesterstate -ExcludeTagFilter "tag3", "tag"
+
+            it "sets the ExcludeTagFilter property" {
+                $p.ExcludeTagFilter | should be ("tag3", "tag")
             }
+        }
+
+        Context "TagFilter and ExcludeTagFilter parameter are set" {
+            $p = new-pesterstate -TagFilter "tag","tag2" -ExcludeTagFilter "tag3"
+
+            it "sets the TestNameFilter property" {
+                $p.TagFilter | should be ("tag","tag2")
+            }
+
+            it "sets the ExcludeTagFilter property" {
+                $p.ExcludeTagFilter | should be ("tag3")
+            }
+        }
+        Context "TestNameFilter and TagFilter parameter is set" {
+            $p = new-pesterstate -TagFilter "tag","tag2" -testnamefilter "filter"
 
             it "sets the TestNameFilter property" {
                 $p.TagFilter | should be ("tag","tag2")
@@ -55,7 +52,7 @@ InModuleScope Pester {
     }
 
     Describe "Pester state object" {
-        $p = New-PesterState -Path "Local"
+        $p = New-PesterState
 
         Context "entering describe" {
             It "enters describe" {
@@ -180,29 +177,87 @@ InModuleScope Pester {
             $p.EnterDescribe('Describe')
 
             it "adds passed test" {
-                $p.AddTestResult("result",$true, 100)
+                $p.AddTestResult("result","Passed", 100)
                 $result = $p.TestResult[-1]
                 $result.Name | should be "result"
                 $result.passed | should be $true
+                $result.Result | Should be "Passed"
                 $result.time.ticks | should be 100
             }
             it "adds failed test" {
-                $p.AddTestResult("result",$false, 100, "fail", "stack")
+                $p.AddTestResult("result","Failed", 100, "fail", "stack")
                 $result = $p.TestResult[-1]
                 $result.Name | should be "result"
                 $result.passed | should be $false
+                $result.Result | Should be "Failed"
                 $result.time.ticks | should be 100
                 $result.FailureMessage | should be "fail"
                 $result.StackTrace | should be "stack"
             }
 
+            it "adds skipped test" {
+                $p.AddTestResult("result","Skipped", 100)
+                $result = $p.TestResult[-1]
+                $result.Name | should be "result"
+                $result.passed | should be $true
+                $result.Result | Should be "Skipped"
+                $result.time.ticks | should be 100
+            }
+
+            it "adds Pending test" {
+                $p.AddTestResult("result","Pending", 100)
+                $result = $p.TestResult[-1]
+                $result.Name | should be "result"
+                $result.passed | should be $true
+                $result.Result | Should be "Pending"
+                $result.time.ticks | should be 100
+            }
+
             it "can add test result before entering describe" {
                 if ($p.CurrentContext) { $p.LeaveContext()}
                 if ($p.CurrentDescribe) { $p.LeaveDescribe() }
-                { $p.addTestResult(1,1,1) } | should not throw
+                { $p.addTestResult(1,"Passed",1) } | should not throw
             }
+
+            $p.LeaveContext()
+            $p.LeaveDescribe()
 
         }
 
+        Context "Path and TestNameFilter parameter is set" {
+            $strict = New-PesterState -Strict
+
+            It "Keeps Passed state" {
+                $strict.AddTestResult("test","Passed")
+                $result = $strict.TestResult[-1]
+
+                $result.passed | should be $true
+                $result.Result | Should be "Passed"
+            }
+
+            It "Keeps Failed state" {
+                $strict.AddTestResult("test","Failed")
+                $result = $strict.TestResult[-1]
+
+                $result.passed | should be $false
+                $result.Result | Should be "Failed"
+            }
+
+            It "Changes Pending state to Failed" {
+                $strict.AddTestResult("test","Pending")
+                $result = $strict.TestResult[-1]
+
+                $result.passed | should be $false
+                $result.Result | Should be "Failed"
+            }
+
+            It "Changes Skipped state to Failed" {
+                $strict.AddTestResult("test","Skipped")
+                $result = $strict.TestResult[-1]
+
+                $result.passed | should be $false
+                $result.Result | Should be "Failed"
+            }
+        }
     }
 }

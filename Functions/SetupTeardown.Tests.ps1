@@ -1,4 +1,4 @@
-Describe 'Describe-Scoped setup' {
+Describe 'Describe-Scoped Test Case setup' {
     BeforeEach {
         $testVariable = 'From BeforeEach'
     }
@@ -15,7 +15,7 @@ Describe 'Describe-Scoped setup' {
     }
 }
 
-Describe 'Context-scoped setup' {
+Describe 'Context-scoped Test Case setup' {
     $testVariable = 'Set in Describe'
 
     Context 'The context' {
@@ -33,7 +33,7 @@ Describe 'Context-scoped setup' {
     }
 }
 
-Describe 'Multiple setup blocks' {
+Describe 'Multiple Test Case setup blocks' {
     $testVariable = 'Set in Describe'
 
     BeforeEach {
@@ -59,7 +59,7 @@ Describe 'Multiple setup blocks' {
     }
 }
 
-Describe 'Describe-scoped teardown' {
+Describe 'Describe-scoped Test Case teardown' {
     $testVariable = 'Set in Describe'
 
     AfterEach {
@@ -75,7 +75,7 @@ Describe 'Describe-scoped teardown' {
     }
 }
 
-Describe 'Multiple teardown blocks' {
+Describe 'Multiple Test Case teardown blocks' {
     $testVariable = 'Set in Describe'
 
     AfterEach {
@@ -87,7 +87,7 @@ Describe 'Multiple teardown blocks' {
             $testVariable = 'Set in the first Context AfterEach'
         }
 
-        It 'Performs a test in Context' { }
+        It 'Performs a test in Context' { "some output to prevent the It being marked as Pending and failing because of Strict mode"}
 
         It 'Executes Describe teardown blocks after Context teardown blocks' {
             $testVariable | Should Be 'Set in the second Describe AfterEach'
@@ -98,3 +98,89 @@ Describe 'Multiple teardown blocks' {
         $testVariable = 'Set in the second Describe AfterEach'
     }
 }
+
+$script:DescribeBeforeAllCounter = 0
+$script:DescribeAfterAllCounter  = 0
+$script:ContextBeforeAllCounter  = 0
+$script:ContextAfterAllCounter   = 0
+
+Describe 'Test Group Setup and Teardown' {
+    It 'Executed the Describe BeforeAll regardless of definition order' {
+        $script:DescribeBeforeAllCounter | Should Be 1
+    }
+
+    It 'Did not execute any other block yet' {
+        $script:DescribeAfterAllCounter | Should Be 0
+        $script:ContextBeforeAllCounter | Should Be 0
+        $script:ContextAfterAllCounter  | Should Be 0
+    }
+
+    BeforeAll {
+        $script:DescribeBeforeAllCounter++
+    }
+
+    AfterAll {
+        $script:DescribeAfterAllCounter++
+    }
+
+    Context 'Context scoped setup and teardown' {
+        BeforeAll {
+            $script:ContextBeforeAllCounter++
+        }
+
+        AfterAll {
+            $script:ContextAfterAllCounter++
+        }
+
+        It 'Executed the Context BeforeAll block' {
+            $script:ContextBeforeAllCounter | Should Be 1
+        }
+
+        It 'Has not executed any other blocks yet' {
+            $script:DescribeBeforeAllCounter | Should Be 1
+            $script:DescribeAfterAllCounter  | Should Be 0
+            $script:ContextAfterAllCounter   | Should Be 0
+        }
+    }
+
+    It 'Executed the Context AfterAll block' {
+        $script:ContextAfterAllCounter | Should Be 1
+    }
+}
+
+Describe 'Finishing TestGroup Setup and Teardown tests' {
+    It 'Executed each Describe and Context group block once' {
+        $script:DescribeBeforeAllCounter | Should Be 1
+        $script:DescribeAfterAllCounter  | Should Be 1
+        $script:ContextBeforeAllCounter  | Should Be 1
+        $script:ContextAfterAllCounter   | Should Be 1
+    }
+}
+
+
+if ($PSVersionTable.PSVersion.Major -ge 3)
+{
+    $thisTestScriptFilePath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($PSCommandPath)
+
+    Describe 'Script Blocks and file association (testing automatic variables)' {
+        BeforeEach {
+            $commandPath = $PSCommandPath
+        }
+
+        $beforeEachBlock = InModuleScope Pester {
+            $pester.BeforeEach[0].ScriptBlock
+        }
+
+        It 'Creates script block objects associated with the proper file' {
+            $scriptBlockFilePath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($beforeEachBlock.File)
+
+            $scriptBlockFilePath | Should Be $thisTestScriptFilePath
+        }
+
+        It 'Has the correct automatic variable values inside the BeforeEach block' {
+            $commandPath | Should Be $PSCommandPath
+        }
+    }
+}
+
+#Testing if failing setup or teardown will fail 'It' is done in the TestsRunningInCleanRunspace.Tests.ps1 file

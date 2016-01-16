@@ -4,7 +4,7 @@
 ModuleToProcess = 'Pester.psm1'
 
 # Version number of this module.
-ModuleVersion = '3.0.3'
+ModuleVersion = '3.3.11'
 
 # ID used to uniquely identify this module
 GUID = 'a699dea5-2c73-4616-a270-1f7abb777e71'
@@ -16,7 +16,7 @@ Author = 'Pester Team'
 CompanyName = 'Pester'
 
 # Copyright statement for this module
-Copyright = 'Copyright (c) 2014 by Pester Team, licensed under Apache 2.0 License.'
+Copyright = 'Copyright (c) 2015 by Pester Team, licensed under Apache 2.0 License.'
 
 # Description of the functionality provided by this module
 Description = 'Pester provides a framework for running BDD style Tests to execute and validate PowerShell commands inside of PowerShell and offers a powerful set of Mocking Functions that allow tests to mimic and mock the functionality of any command inside of a piece of powershell code being tested. Pester tests can execute any command or script that is accesible to a pester test file. This can include functions, Cmdlets, Modules and scripts. Pester can be run in ad hoc style in a console or it can be integrated into the Build scripts of a Continuous Integration system.'
@@ -42,6 +42,8 @@ FunctionsToExport = @(
     'Invoke-Mock',
     'BeforeEach',
     'AfterEach',
+    'BeforeAll',
+    'AfterAll'
     'Get-MockDynamicParameters',
     'Set-DynamicParameterVariables'
 )
@@ -49,8 +51,22 @@ FunctionsToExport = @(
 # # Cmdlets to export from this module
 # CmdletsToExport = '*'
 
-# # Variables to export from this module
-# VariablesToExport = '*'
+# Variables to export from this module
+VariablesToExport = @(
+    'Path',
+    'TagFilter',
+    'ExcludeTagFilter',
+    'TestNameFilter',
+    'TestResult',
+    'CurrentContext',
+    'CurrentDescribe',
+    'CurrentTest',
+    'SessionState',
+    'CommandCoverage',
+    'BeforeEach',
+    'AfterEach',
+    'Strict'
+)
 
 # # Aliases to export from this module
 # AliasesToExport = '*'

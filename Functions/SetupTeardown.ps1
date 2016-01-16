@@ -6,9 +6,9 @@ function BeforeEach
     the current Context or Describe block.
 
 .DESCRIPTION
-    BeforeEach and AfterEach are unique in that they apply to the entire Context
-    or Describe block, even those that come before the BeforeEach or AfterEach
-    definition within the Context or Describe.  For a full description of this
+    BeforeEach, AfterEach, BeforeAll, and AfterAll are unique in that they apply
+    to the entire Context or Describe block, regardless of the order of the
+    statements in the Context or Describe.  For a full description of this
     behavior, as well as how multiple BeforeEach or AfterEach blocks interact
     with each other, please refer to the about_BeforeEach_AfterEach help file.
 
@@ -26,9 +26,9 @@ function AfterEach
     the current Context or Describe block.
 
 .DESCRIPTION
-    BeforeEach and AfterEach are unique in that they apply to the entire Context
-    or Describe block, even those that come before the BeforeEach or AfterEach
-    definition within the Context or Describe.  For a full description of this
+    BeforeEach, AfterEach, BeforeAll, and AfterAll are unique in that they apply
+    to the entire Context or Describe block, regardless of the order of the
+    statements in the Context or Describe.  For a full description of this
     behavior, as well as how multiple BeforeEach or AfterEach blocks interact
     with each other, please refer to the about_BeforeEach_AfterEach help file.
 
@@ -38,49 +38,100 @@ function AfterEach
     Assert-DescribeInProgress -CommandName AfterEach
 }
 
+function BeforeAll
+{
+<#
+.SYNOPSIS
+    Defines a series of steps to perform at the beginning of the current Context
+    or Describe block.
+
+.DESCRIPTION
+    BeforeEach, AfterEach, BeforeAll, and AfterAll are unique in that they apply
+    to the entire Context or Describe block, regardless of the order of the
+    statements in the Context or Describe.
+
+.LINK
+    about_BeforeEach_AfterEach
+#>
+    Assert-DescribeInProgress -CommandName BeforeAll
+}
+
+function AfterAll
+{
+<#
+.SYNOPSIS
+    Defines a series of steps to perform at the end of every It block within
+    the current Context or Describe block.
+
+.DESCRIPTION
+    BeforeEach, AfterEach, BeforeAll, and AfterAll are unique in that they apply
+    to the entire Context or Describe block, regardless of the order of the
+    statements in the Context or Describe.
+
+.LINK
+    about_BeforeEach_AfterEach
+#>
+    Assert-DescribeInProgress -CommandName AfterAll
+}
+
 function Clear-SetupAndTeardown
 {
     $pester.BeforeEach = @( $pester.BeforeEach | Where-Object { $_.Scope -ne $pester.Scope } )
     $pester.AfterEach  = @( $pester.AfterEach  | Where-Object { $_.Scope -ne $pester.Scope } )
+    $pester.BeforeAll  = @( $pester.BeforeAll  | Where-Object { $_.Scope -ne $pester.Scope } )
+    $pester.AfterAll   = @( $pester.AfterAll   | Where-Object { $_.Scope -ne $pester.Scope } )
 }
 
-function Invoke-SetupBlocks
+function Invoke-TestCaseSetupBlocks
 {
     $orderedSetupBlocks = @(
-        $pester.BeforeEach | Where-Object { $_.Scope -eq 'Describe' }
-        $pester.BeforeEach | Where-Object { $_.Scope -eq 'Context'  }
+        $pester.BeforeEach | Where-Object { $_.Scope -eq 'Describe' } | Select-Object -ExpandProperty ScriptBlock
+        $pester.BeforeEach | Where-Object { $_.Scope -eq 'Context'  } | Select-Object -ExpandProperty ScriptBlock
     )
 
-    foreach ($setupBlock in $orderedSetupBlocks)
-    {
-        try
-        {
-            . $setupBlock.ScriptBlock
-        }
-        catch
-        {
-            Write-Error -ErrorRecord $_
-        }
-    }
+    Invoke-Blocks -ScriptBlock $orderedSetupBlocks
 }
 
-function Invoke-TeardownBlocks
+function Invoke-TestCaseTeardownBlocks
 {
     $orderedTeardownBlocks = @(
-        $pester.AfterEach | Where-Object { $_.Scope -eq 'Context'  }
-        $pester.AfterEach | Where-Object { $_.Scope -eq 'Describe' }
+        $pester.AfterEach | Where-Object { $_.Scope -eq 'Context'  } | Select-Object -ExpandProperty ScriptBlock
+        $pester.AfterEach | Where-Object { $_.Scope -eq 'Describe' } | Select-Object -ExpandProperty ScriptBlock
     )
 
-    foreach ($teardownBlock in $orderedTeardownBlocks)
+    Invoke-Blocks -ScriptBlock $orderedTeardownBlocks
+}
+
+function Invoke-TestGroupSetupBlocks
+{
+    param ([string] $Scope)
+
+    $scriptBlocks = $pester.BeforeAll |
+                    Where-Object { $_.Scope -eq $Scope } |
+                    Select-Object -ExpandProperty ScriptBlock
+
+    Invoke-Blocks -ScriptBlock $scriptBlocks
+}
+
+function Invoke-TestGroupTeardownBlocks
+{
+    param ([string] $Scope)
+
+    $scriptBlocks = $pester.AfterAll |
+                    Where-Object { $_.Scope -eq $Scope } |
+                    Select-Object -ExpandProperty ScriptBlock
+
+    Invoke-Blocks -ScriptBlock $scriptBlocks
+}
+
+function Invoke-Blocks
+{
+    param ([scriptblock[]] $ScriptBlock)
+
+    foreach ($block in $ScriptBlock)
     {
-        try
-        {
-            . $teardownBlock.ScriptBlock
-        }
-        catch
-        {
-            Write-Error -ErrorRecord $_
-        }
+        if ($null -eq $block) { continue }
+        . $block
     }
 }
 
@@ -90,19 +141,79 @@ function Add-SetupAndTeardown
         [scriptblock] $ScriptBlock
     )
 
+    if ($PSVersionTable.PSVersion.Major -le 2)
+    {
+        Add-SetupAndTeardownV2 -ScriptBlock $ScriptBlock
+    }
+    else
+    {
+        Add-SetupAndTeardownV3 -ScriptBlock $ScriptBlock
+    }
+}
+
+function Add-SetupAndTeardownV3
+{
+    param (
+        [scriptblock] $ScriptBlock
+    )
+
+    $pattern = '^(?:Before|After)(?:Each|All)$'
+    $predicate = {
+        param ([System.Management.Automation.Language.Ast] $Ast)
+
+        $Ast -is [System.Management.Automation.Language.CommandAst] -and
+        $Ast.CommandElements.Count -eq 2 -and
+        $Ast.CommandElements[0].ToString() -match $pattern -and
+        $Ast.CommandElements[1] -is [System.Management.Automation.Language.ScriptBlockExpressionAst]
+    }
+
+    $searchNestedBlocks = $false
+
+    $calls = $ScriptBlock.Ast.FindAll($predicate, $searchNestedBlocks)
+
+    foreach ($call in $calls)
+    {
+        # For some reason, calling ScriptBlockAst.GetScriptBlock() sometimes blows up due to failing semantics
+        # checks, even though the code is perfectly valid.  So we'll poke around with reflection again to skip
+        # that part and just call the internal ScriptBlock constructor that we need
+
+        $iPmdProviderType = [scriptblock].Assembly.GetType('System.Management.Automation.Language.IParameterMetadataProvider')
+
+        $flags = [System.Reflection.BindingFlags]'Instance, NonPublic'
+        $constructor = [scriptblock].GetConstructor($flags, $null, [Type[]]@($iPmdProviderType, [bool]), $null)
+
+        $block = $constructor.Invoke(@($call.CommandElements[1].ScriptBlock, $false))
+
+        Set-ScriptBlockScope -ScriptBlock $block -SessionState $pester.SessionState
+        $commandName = $call.CommandElements[0].ToString()
+        Add-SetupOrTeardownScriptBlock -CommandName $commandName -ScriptBlock $block
+    }
+}
+
+function Add-SetupAndTeardownV2
+{
+    param (
+        [scriptblock] $ScriptBlock
+    )
+
     $codeText = $ScriptBlock.ToString()
-    $tokens = ParseCodeIntoTokens -CodeText $codeText
+    $tokens = @(ParseCodeIntoTokens -CodeText $codeText)
 
     for ($i = 0; $i -lt $tokens.Count; $i++)
     {
-        if ($tokens[$i].Type -eq [System.Management.Automation.PSTokenType]::Command -and
-            (IsSetupOrTeardownCommand -CommandName $tokens[$i].Content))
+        $token = $tokens[$i]
+        $type = $token.Type
+        if ($type -eq [System.Management.Automation.PSTokenType]::Command -and
+            (IsSetupOrTeardownCommand -CommandName $token.Content))
         {
             $openBraceIndex, $closeBraceIndex = Get-BraceIndecesForCommand -Tokens $tokens -CommandIndex $i
-            Add-SetupTeardownFromTokens -Tokens $tokens -CommandIndex $i -OpenBraceIndex $openBraceIndex -CloseBraceIndex $closeBraceIndex -CodeText $codeText
+
+            $block = Get-ScriptBlockFromTokens -Tokens $Tokens -OpenBraceIndex $openBraceIndex -CloseBraceIndex $closeBraceIndex -CodeText $codeText
+            Add-SetupOrTeardownScriptBlock -CommandName $token.Content -ScriptBlock $block
+
             $i = $closeBraceIndex
         }
-        elseif ($tokens[$i].Type -eq [System.Management.Automation.PSTokenType]::GroupStart)
+        elseif ($type -eq [System.Management.Automation.PSTokenType]::GroupStart)
         {
             # We don't want to parse Setup or Teardown commands in child scopes here, so anything
             # bounded by a GroupStart / GroupEnd token pair which is not immediately preceded by
@@ -137,13 +248,19 @@ function IsSetupOrTeardownCommand
 function IsSetupCommand
 {
     param ([string] $CommandName)
-    return $CommandName -eq 'BeforeEach'
+    return $CommandName -eq 'BeforeEach' -or $CommandName -eq 'BeforeAll'
 }
 
 function IsTeardownCommand
 {
     param ([string] $CommandName)
-    return $CommandName -eq 'AfterEach'
+    return $CommandName -eq 'AfterEach' -or $CommandName -eq 'AfterAll'
+}
+
+function IsTestGroupCommand
+{
+    param ([string] $CommandName)
+    return $CommandName -eq 'BeforeAll' -or $CommandName -eq 'AfterAll'
 }
 
 function Get-BraceIndecesForCommand
@@ -181,6 +298,40 @@ function Get-GroupStartTokenForCommand
     return $CommandIndex + 1
 }
 
+Add-Type -TypeDefinition @'
+    namespace Pester
+    {
+        using System;
+        using System.Management.Automation;
+
+        public static class ClosingBraceFinder
+        {
+            public static int GetClosingBraceIndex(PSToken[] tokens, int startIndex)
+            {
+                int groupLevel = 1;
+                int len = tokens.Length;
+
+                for (int i = startIndex + 1; i < len; i++)
+                {
+                    PSTokenType type = tokens[i].Type;
+                    if (type == PSTokenType.GroupStart)
+                    {
+                        groupLevel++;
+                    }
+                    else if (type == PSTokenType.GroupEnd)
+                    {
+                        groupLevel--;
+
+                        if (groupLevel <= 0) { return i; }
+                    }
+                }
+
+                return -1;
+            }
+        }
+    }
+'@
+
 function Get-GroupCloseTokenIndex
 {
     param (
@@ -188,61 +339,66 @@ function Get-GroupCloseTokenIndex
         [int] $GroupStartTokenIndex
     )
 
-    $groupLevel = 1
+    $closeIndex = [Pester.ClosingBraceFinder]::GetClosingBraceIndex($Tokens, $GroupStartTokenIndex)
 
-    for ($i = $GroupStartTokenIndex + 1; $i -lt $Tokens.Count; $i++)
+    if ($closeIndex -lt 0)
     {
-        switch ($Tokens[$i].Type)
-        {
-            ([System.Management.Automation.PSTokenType]::GroupStart)
-            {
-                $groupLevel++
-                break
-            }
-
-            ([System.Management.Automation.PSTokenType]::GroupEnd)
-            {
-                $groupLevel--
-
-                if ($groupLevel -le 0)
-                {
-                    return $i
-                }
-
-                break
-            }
-        }
+        throw 'No corresponding GroupEnd token was found.'
     }
 
-    throw 'No corresponding GroupEnd token was found.'
+    return $closeIndex
 }
 
-function Add-SetupTeardownFromTokens
+function Get-ScriptBlockFromTokens
 {
     param (
         [System.Management.Automation.PSToken[]] $Tokens,
-        [int] $CommandIndex,
         [int] $OpenBraceIndex,
         [int] $CloseBraceIndex,
         [string] $CodeText
     )
 
-    $commandName = $Tokens[$CommandIndex].Content
-
     $blockStart = $Tokens[$OpenBraceIndex + 1].Start
     $blockLength = $Tokens[$CloseBraceIndex].Start - $blockStart
     $setupOrTeardownCodeText = $codeText.Substring($blockStart, $blockLength)
 
-    $setupOrTeardownBlock = [scriptblock]::Create($setupOrTeardownCodeText)
-    Set-ScriptBlockScope -ScriptBlock $setupOrTeardownBlock -SessionState $pester.SessionState
+    $scriptBlock = [scriptblock]::Create($setupOrTeardownCodeText)
+    Set-ScriptBlockScope -ScriptBlock $scriptBlock -SessionState $pester.SessionState
 
-    if (IsSetupCommand -CommandName $commandName)
+    return $scriptBlock
+}
+
+function Add-SetupOrTeardownScriptBlock
+{
+    param (
+        [string] $CommandName,
+        [scriptblock] $ScriptBlock
+    )
+
+    $isSetupCommand = IsSetupCommand -CommandName $CommandName
+    $isGroupCommand = IsTestGroupCommand -CommandName $CommandName
+
+    if ($isSetupCommand)
     {
-        Add-BeforeEach -ScriptBlock $setupOrTeardownBlock
+        if ($isGroupCommand)
+        {
+            Add-BeforeAll -ScriptBlock $ScriptBlock
+        }
+        else
+        {
+            Add-BeforeEach -ScriptBlock $ScriptBlock
+        }
     }
     else
     {
-        Add-AfterEach -ScriptBlock $setupOrTeardownBlock
+        if ($isGroupCommand)
+        {
+            Add-AfterAll -ScriptBlock $ScriptBlock
+        }
+        else
+        {
+            Add-AfterEach -ScriptBlock $ScriptBlock
+        }
     }
 }
 
@@ -261,7 +417,6 @@ function Add-BeforeEach
     }
 
     $pester.BeforeEach += @(New-Object psobject -Property $props)
-
 }
 
 function Add-AfterEach
@@ -279,4 +434,38 @@ function Add-AfterEach
     }
 
     $pester.AfterEach += @(New-Object psobject -Property $props)
+}
+
+function Add-BeforeAll
+{
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [scriptblock]
+        $ScriptBlock
+    )
+
+    $props = @{
+        Scope       = $pester.Scope
+        ScriptBlock = $ScriptBlock
+    }
+
+    $pester.BeforeAll += @(New-Object psobject -Property $props)
+}
+
+function Add-AfterAll
+{
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [scriptblock]
+        $ScriptBlock
+    )
+
+    $props = @{
+        Scope       = $pester.Scope
+        ScriptBlock = $ScriptBlock
+    }
+
+    $pester.AfterAll += @(New-Object psobject -Property $props)
 }

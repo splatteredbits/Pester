@@ -1,8 +1,11 @@
 Set-StrictMode -Version Latest
 
+$tempPath = (Get-Item $env:temp).FullName
+
 Describe "Setup" {
     It "returns a location that is in a temp area" {
-        $TestDrive -like "${$env:temp}*" | Should Be $true
+        $testDrivePath = (Get-Item $TestDrive).FullName
+        $testDrivePath -like "$tempPath*" | Should Be $true
     }
 
     It "creates a drive location called TestDrive:" {
@@ -12,7 +15,8 @@ Describe "Setup" {
 
 Describe "TestDrive" {
     It "handles creation of a drive with . characters in the path" {
-        # currently untested but requirement needs to be here
+        #TODO: currently untested but requirement needs to be here
+        "preventing this from failing"
     }
 }
 
@@ -71,7 +75,7 @@ Describe "Create file with passthru" {
     $thefile = Setup -File "thefile" -PassThru
 
     It "returns the file from the temp location" {
-        $thefile.FullName -like "${env:TEMP}*" | Should Be $true
+        $thefile.FullName -like "$tempPath*" | Should Be $true
         $thefile.Exists | Should Be $true
     }
 }
@@ -80,7 +84,7 @@ Describe "Create directory with passthru" {
     $thedir = Setup -Dir "thedir" -PassThru
 
     It "returns the directory from the temp location" {
-        $thedir.FullName -like "${env:TEMP}*" | Should Be $true
+        $thedir.FullName -like "$tempPath*" | Should Be $true
         $thedir.Exists | Should Be $true
     }
 }
