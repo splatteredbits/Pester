@@ -1,3 +1,19 @@
+## 3.3.14 (December 16, 2015)
+  - Fixed Coverage analysis output, which broke in 3.3.12.  [GH-440]
+
+## 3.3.13 (December 10, 2015)
+  - Fixed a bug where mocking Get-Command would result in infinite recursion.  [GH-437]
+
+## 3.3.12 (December 8, 2015)
+  - Fixed a bug with mocking dynamic parameters on latest Windows 10 / PSv5 builds.  [GH-419]
+  - Fix for NUnit XML export on .NET core.  [GH-420]
+  - Added Set-TestInconclusive command.  [GH-421]
+  - Mocking improvements for calling original commands with begin/process/end blocks. [GH-422]
+  - Case insensitive replacement of Test in help [GH-428]
+  - Improve stack trace and exception console output [GH-426]
+  - Added support for intercepting module-qualified calls to a mocked command. [GH-432]
+  - Improved Assert-MockCalled to allow it to be passed an alias as the -CommandName.
+
 ## 3.3.11 (September 8, 2015)
   - Fixed a bug where mocking New-Object would cause a stack overflow.  [GH-405]
 

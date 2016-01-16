@@ -13,7 +13,7 @@ function Get-HumanTime($Seconds) {
 function GetFullPath ([string]$Path) {
     if (-not [System.IO.Path]::IsPathRooted($Path))
     {
-        $Path = Join-Path $ExecutionContext.SessionState.Path.CurrentFileSystemLocation $Path
+        $Path = & $SafeCommands['Join-Path'] $ExecutionContext.SessionState.Path.CurrentFileSystemLocation $Path
     }
 
     return $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
@@ -55,23 +55,29 @@ function Export-NUnitReport {
 
     $Path = GetFullPath -Path $Path
 
-    $settings = New-Object -TypeName Xml.XmlWriterSettings -Property @{
+    $settings = & $SafeCommands['New-Object'] -TypeName Xml.XmlWriterSettings -Property @{
         Indent = $true
         NewLineOnAttributes = $false
     }
 
+    $xmlFile = $null
     $xmlWriter = $null
     try {
-        $xmlWriter = [Xml.XmlWriter]::Create($Path,$settings)
+        $xmlFile = [IO.File]::Create($Path)
+        $xmlWriter = [Xml.XmlWriter]::Create($xmlFile, $settings)
 
         Write-NUnitReport -XmlWriter $xmlWriter -PesterState $PesterState -LegacyFormat:$LegacyFormat
 
         $xmlWriter.Flush()
+        $xmlFile.Flush()
     }
     finally
     {
         if ($null -ne $xmlWriter) {
             try { $xmlWriter.Close() } catch {}
+        }
+        if ($null -ne $xmlFile) {
+            try { $xmlFile.Close() } catch {}
         }
     }
 }
@@ -99,13 +105,13 @@ function Write-NUnitTestResultAttributes($PesterState, [System.Xml.XmlWriter] $X
     $XmlWriter.WriteAttributeString('errors', '0')
     $XmlWriter.WriteAttributeString('failures', $PesterState.FailedCount)
     $XmlWriter.WriteAttributeString('not-run', '0')
-    $XmlWriter.WriteAttributeString('inconclusive', $PesterState.PendingCount)
+    $XmlWriter.WriteAttributeString('inconclusive', $PesterState.PendingCount + $PesterState.InconclusiveCount)
     $XmlWriter.WriteAttributeString('ignored', $PesterState.SkippedCount)
     $XmlWriter.WriteAttributeString('skipped', '0')
     $XmlWriter.WriteAttributeString('invalid', '0')
-    $date = Get-Date
-    $XmlWriter.WriteAttributeString('date', (Get-Date -Date $date -Format 'yyyy-MM-dd'))
-    $XmlWriter.WriteAttributeString('time', (Get-Date -Date $date -Format 'HH:mm:ss'))
+    $date = & $SafeCommands['Get-Date']
+    $XmlWriter.WriteAttributeString('date', (& $SafeCommands['Get-Date'] -Date $date -Format 'yyyy-MM-dd'))
+    $XmlWriter.WriteAttributeString('time', (& $SafeCommands['Get-Date'] -Date $date -Format 'HH:mm:ss'))
 }
 
 function Write-NUnitTestResultChildNodes($PesterState, [System.Xml.XmlWriter] $XmlWriter, [switch] $LegacyFormat)
@@ -167,7 +173,7 @@ function Write-NUnitGlobalTestSuiteAttributes($PesterState, [System.Xml.XmlWrite
 
 function Write-NUnitDescribeElements($PesterState, [System.Xml.XmlWriter] $XmlWriter, [switch] $LegacyFormat)
 {
-    $Describes = $PesterState.TestResult | Group-Object -Property Describe
+    $Describes = $PesterState.TestResult | & $SafeCommands['Group-Object'] -Property Describe
     if ($null -ne $Describes)
     {
         foreach ($currentDescribe in $Describes)
@@ -266,7 +272,7 @@ function Write-NUnitTestSuiteAttributes($TestSuiteInfo, [System.Xml.XmlWriter] $
 
 function Write-NUnitDescribeChildElements([object[]] $TestResults, [System.Xml.XmlWriter] $XmlWriter, [switch] $LegacyFormat, [string] $DescribeName)
 {
-    $suites = $TestResults | Group-Object -Property ParameterizedSuiteName
+    $suites = $TestResults | & $SafeCommands['Group-Object'] -Property ParameterizedSuiteName
 
     foreach ($suite in $suites)
     {
@@ -369,10 +375,25 @@ function Write-NUnitTestCaseAttributes($TestResult, [System.Xml.XmlWriter] $XmlW
             $XmlWriter.WriteAttributeString('executed', 'False')
             break
         }
+
         Pending
         {
             $XmlWriter.WriteAttributeString('result', 'Inconclusive')
             $XmlWriter.WriteAttributeString('executed', 'True')
+            break
+        }
+        Inconclusive
+        {
+            $XmlWriter.WriteAttributeString('result', 'Inconclusive')
+            $XmlWriter.WriteAttributeString('executed', 'True')
+
+            if ($TestResult.FailureMessage)
+            {
+                $XmlWriter.WriteStartElement('reason')
+                $xmlWriter.WriteElementString('message', $TestResult.FailureMessage)
+                $XmlWriter.WriteEndElement() # Close reason tag
+            }
+
             break
         }
         Failed
@@ -388,12 +409,12 @@ function Write-NUnitTestCaseAttributes($TestResult, [System.Xml.XmlWriter] $XmlW
     }
 }
 function Get-RunTimeEnvironment() {
-    $osSystemInformation = (Get-WmiObject Win32_OperatingSystem)
+    $osSystemInformation = (& $SafeCommands['Get-WmiObject'] Win32_OperatingSystem)
     @{
         'nunit-version' = '2.5.8.0'
         'os-version' = $osSystemInformation.Version
         platform = $osSystemInformation.Name
-        cwd = (Get-Location).Path #run path
+        cwd = (& $SafeCommands['Get-Location']).Path #run path
         'machine-name' = $env:ComputerName
         user = $env:Username
         'user-domain' = $env:userDomain
@@ -419,8 +440,8 @@ function Get-GroupResult ($InputObject)
 {
     #I am not sure about the result precedence, and can't find any good source
     #TODO: Confirm this is the correct order of precedence
-    if ($InputObject |  Where {$_.Result -eq 'Failed'}) { return 'Failure' }
-    if ($InputObject |  Where {$_.Result -eq 'Skipped'}) { return 'Ignored' }
-    if ($InputObject |  Where {$_.Result -eq 'Pending'}) { return 'Inconclusive' }
+    if ($InputObject | & $SafeCommands['Where-Object'] {$_.Result -eq 'Failed'}) { return 'Failure' }
+    if ($InputObject | & $SafeCommands['Where-Object'] {$_.Result -eq 'Skipped'}) { return 'Ignored' }
+    if ($InputObject | & $SafeCommands['Where-Object'] {$_.Result -eq 'Pending' -or $_.Result -eq 'Inconclusive'}) { return 'Inconclusive' }
     return 'Success'
 }
