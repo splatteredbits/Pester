@@ -1,4 +1,4 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 
 function FunctionUnderTest
 {
@@ -213,7 +213,7 @@ Describe 'When calling Mock on an external script' {
 
         $result = & tempExternalScript.ps1
         It 'Should Invoke the mocked script using the command-invocation operator' {
-            #the command invocation operator is (&). Moved this to comment because it breaks the contionuous builds.
+            #the command invocation operator is (&). Moved this to comment because it breaks the continuous builds.
             #there is issue for this on GH
 
             $result | Should Be 'I am not tempExternalScript.ps1'
@@ -677,7 +677,7 @@ Describe "When Calling Assert-MockCalled without exactly" {
     FunctionUnderTest "one"
     FunctionUnderTest "two"
 
-    It "Should throw if mock was not called atleast the number of times specified" {
+    It "Should throw if mock was not called at least the number of times specified" {
         $scriptBlock = { Assert-MockCalled FunctionUnderTest 4 }
         $scriptBlock | Should Throw "Expected FunctionUnderTest to be called at least 4 times but was called 3 times"
     }
@@ -1244,7 +1244,22 @@ Describe 'DynamicParam blocks in other scopes' {
             DynamicParam {
                 if ($script:DoDynamicParam)
                 {
-                    Get-MockDynamicParameters -CmdletName Get-ChildItem -Parameters @{ Path = [string[]]'Cert:\' }
+                    if ($PSVersionTable.PSVersion.Major -ge 3)
+                    {
+                        # -Parameters needs to be a PSBoundParametersDictionary object to work properly, due to internal
+                        # details of the PS engine in v5.  Naturally, this is an internal type and we need to use reflection
+                        # to make a new one.
+
+                        $flags = [System.Reflection.BindingFlags]'Instance,NonPublic'
+                        $params = $PSBoundParameters.GetType().GetConstructor($flags, $null, @(), $null).Invoke(@())
+                    }
+                    else
+                    {
+                        $params = @{}
+                    }
+
+                    $params['Path'] = [string[]]'Cert:\'
+                    Get-MockDynamicParameters -CmdletName Get-ChildItem -Parameters $params
                 }
             }
 
@@ -1325,7 +1340,7 @@ Describe 'When mocking a command with parameters that match internal variable na
     }
 }
 
-Describe 'Mocking commands with potentially ambigious parameter sets' {
+Describe 'Mocking commands with potentially ambiguous parameter sets' {
     function SomeFunction
     {
         [CmdletBinding()]
@@ -1514,5 +1529,198 @@ Describe 'Mocking Get-Command' {
 
     It 'Does not break when Get-Command is mocked' {
         { Mock Get-Command } | Should Not Throw
+    }
+}
+
+Describe 'Mocks with closures' {
+    $closureVariable = 'from closure'
+    $scriptBlock = { "Variable resolved $closureVariable" }
+    $closure = $scriptBlock.GetNewClosure()
+    $closureVariable = 'from script'
+
+    function TestClosure([switch] $Closure) { 'Not mocked' }
+
+    Mock TestClosure $closure -ParameterFilter { $Closure }
+    Mock TestClosure $scriptBlock
+
+    It 'Resolves variables in the closure rather than Pester''s current scope' {
+        TestClosure | Should Be 'Variable resolved from script'
+        TestClosure -Closure | Should Be 'Variable resolved from closure'
+    }
+}
+
+Describe '$args handling' {
+
+    function AdvancedFunction {
+        [CmdletBinding()]
+        param()
+        'orig'
+    }
+    function SimpleFunction {
+        . AdvancedFunction
+    }
+    function AdvancedFunctionWithArgs {
+        [CmdletBinding()]
+        param($Args)
+        'orig'
+    }
+    Add-Type -TypeDefinition '
+        using System.Management.Automation;
+        [Cmdlet(VerbsLifecycle.Invoke, "CmdletWithArgs")]
+        public class InvokeCmdletWithArgs : Cmdlet {
+            public InvokeCmdletWithArgs() { }
+            [Parameter]
+            public object Args {
+                set { }
+            }
+            protected override void EndProcessing() {
+                WriteObject("orig");
+            }
+        }
+    ' -PassThru | Select-Object -ExpandProperty Assembly | Import-Module
+
+    Mock AdvancedFunction { 'mock' }
+    Mock AdvancedFunctionWithArgs { 'mock' }
+    Mock Invoke-CmdletWithArgs { 'mock' }
+
+    It 'Advanced function mock should be callable with dot operator' {
+        SimpleFunction garbage | Should Be mock
+    }
+    It 'Advanced function with Args parameter should be mockable' {
+        AdvancedFunctionWithArgs -Args garbage | Should Be mock
+    }
+    It 'Cmdlet with Args parameter should be mockable' {
+        Invoke-CmdletWithArgs -Args garbage | Should Be mock
+    }
+
+}
+
+Describe 'Single quote in command/module name' {
+    BeforeAll {
+        $module = New-Module "Module '‘’‚‛" {
+            Function NormalCommandName { 'orig' }
+            New-Item "Function::Command '‘’‚‛" -Value { 'orig' }
+        } | Import-Module -PassThru
+    }
+
+    AfterAll {
+        if ($module) { Remove-Module $module; $module = $null }
+    }
+
+    It 'Command with single quote in module name should be mockable' {
+        Mock NormalCommandName { 'mock' }
+        NormalCommandName | Should Be mock
+    }
+    It 'Command with single quote in name should be mockable' {
+        Mock "Command '‘’‚‛" { 'mock' }
+        & "Command '‘’‚‛" | Should Be mock
+    }
+
+}
+
+if ($global:PSVersionTable.PSVersion.Major -ge 3) {
+    Describe 'Mocking cmdlet without positional parameters' {
+
+        Add-Type -TypeDefinition '
+            using System.Management.Automation;
+            [Cmdlet(VerbsLifecycle.Invoke, "CmdletWithoutPositionalParameters")]
+            public class InvokeCmdletWithoutPositionalParameters : Cmdlet {
+                public InvokeCmdletWithoutPositionalParameters() { }
+                [Parameter]
+                public object Parameter {
+                    set { }
+                }
+            }
+            [Cmdlet(VerbsLifecycle.Invoke, "CmdletWithValueFromRemainingArguments")]
+            public class InvokeCmdletWithValueFromRemainingArguments : Cmdlet {
+                private string parameter;
+                private string[] remainings;
+                public InvokeCmdletWithValueFromRemainingArguments() { }
+                [Parameter]
+                public string Parameter {
+                    set {
+                        parameter=value;
+                    }
+                }
+                [Parameter(ValueFromRemainingArguments=true)]
+                public string[] Remainings {
+                    set {
+                        remainings=value;
+                    }
+                }
+                protected override void EndProcessing() {
+                    WriteObject(string.Concat(parameter, "; ", string.Join(", ", remainings)));
+                }
+            }
+        ' -PassThru | Select-Object -First 1 -ExpandProperty Assembly | Import-Module
+
+        It 'Original cmdlet does not have positional parameters' {
+            { Invoke-CmdletWithoutPositionalParameters garbage } | Should Throw
+        }
+        Mock Invoke-CmdletWithoutPositionalParameters
+        It 'Mock of cmdlet should not make parameters to be positional' {
+            { Invoke-CmdletWithoutPositionalParameters garbage } | Should Throw
+        }
+
+        It 'Original cmdlet bind all to Remainings' {
+            Invoke-CmdletWithValueFromRemainingArguments asd fgh jkl | Should Be '; asd, fgh, jkl'
+        }
+        Mock Invoke-CmdletWithValueFromRemainingArguments { -join ($Parameter, '; ', ($Remainings -join ', ')) }
+        It 'Mock of cmdlet should bind all to Remainings' {
+            Invoke-CmdletWithValueFromRemainingArguments asd fgh jkl | Should Be '; asd, fgh, jkl'
+        }
+
+    }
+}
+
+Describe 'Nested Mock calls' {
+    $testDate = New-Object DateTime(2012,6,13)
+
+    Mock Get-Date -ParameterFilter { $null -eq $Date } {
+        Get-Date -Date $testDate -Format o
+    }
+
+    It 'Properly handles nested mocks' {
+        $result = @(Get-Date)
+        $result.Count | Should Be 1
+        $result[0] | Should Be '2012-06-13T00:00:00.0000000'
+    }
+}
+
+Describe 'Globbing characters in command name' {
+
+    function f[f]f { 'orig1' }
+    function f?f { 'orig2' }
+    function f*f { 'orig3' }
+    function fff { 'orig4' }
+
+    It 'Command with globbing characters in name should be mockable' {
+        Mock f[f]f { 'mock1' }
+        Mock f?f { 'mock2' }
+        Mock f*f { 'mock3' }
+        f[f]f | Should Be mock1
+        f?f | Should Be mock2
+        f*f | Should Be mock3
+        fff | Should Be orig4
+    }
+
+}
+
+Describe 'Naming conflicts in mocked functions' {
+    function Sample {
+        param(
+            [string]
+            ${Metadata}
+        )
+    }
+
+    function Wrapper {
+        Sample -Metadata 'test'
+    }
+
+    Mock -CommandName Sample { 'mocked' }
+
+    It 'Works with commands that contain variables named Metadata' {
+        Wrapper | Should Be 'mocked'
     }
 }

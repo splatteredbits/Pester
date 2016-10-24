@@ -7,7 +7,7 @@ InModuleScope Pester {
         }
 
         It "returns false for paths do not exist" {
-            Test-NegativeAssertion (PesterExist "$TestDrive\nonexistant")
+            Test-NegativeAssertion (PesterExist "$TestDrive\nonexistent")
         }
 
         It 'works for path with escaped [ ] characters' {
@@ -19,12 +19,6 @@ InModuleScope Pester {
             function f1 {}
 
             'function:f1' | Should Exist
-        }
-
-        It 'returns correct result for env drive' {
-            $env:test = 'somevalue'
-
-            'env:test' | Should Exist
         }
 
         It 'returns correct result for env drive' {

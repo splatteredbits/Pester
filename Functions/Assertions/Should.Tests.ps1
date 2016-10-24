@@ -74,7 +74,7 @@ InModuleScope Pester {
             function PesterTestFailureMessage($v, $e) { return "slime $e $v" }
             $shouldArgs = Parse-ShouldArgs Test, 1
 
-            It "should return the postive assertion failure message" {
+            It "should return the positive assertion failure message" {
                 Get-FailureMessage $shouldArgs 2 | Should Be "slime 1 2"
             }
         }
@@ -158,5 +158,23 @@ InModuleScope Pester {
             }
         }
 
+        It 'All failure message functions are present' {
+            $assertionFunctions = Get-Command -CommandType Function -Module Pester |
+                                  Select-Object -ExpandProperty Name |
+                                  Where-Object { $_ -like 'Pester*' -and $_ -notlike '*FailureMessage' }
+
+            $missingFunctions = @(
+                foreach ($assertionFunction in $assertionFunctions)
+                {
+                    $positiveFailureMessage = "${assertionFunction}FailureMessage"
+                    $negativeFailureMessage = "Not${assertionFunction}FailureMessage"
+
+                    if (-not (Test-Path function:$positiveFailureMessage)) { $positiveFailureMessage }
+                    if (-not (Test-Path function:$negativeFailureMessage)) { $negativeFailureMessage }
+                }
+            )
+
+            [string]$missingFunctions | Should BeNullOrEmpty
+        }
     }
 }

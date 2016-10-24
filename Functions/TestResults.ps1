@@ -154,7 +154,7 @@ function Write-NUnitCultureInformation($PesterState, [System.Xml.XmlWriter] $Xml
 
 function Write-NUnitGlobalTestSuiteAttributes($PesterState, [System.Xml.XmlWriter] $XmlWriter, [switch] $LegacyFormat)
 {
-    $XmlWriter.WriteAttributeString('type', 'Powershell')
+    $XmlWriter.WriteAttributeString('type', 'PowerShell')
 
     # TODO: This used to be writing $PesterState.Path, back when that was a single string (and existed.)
     #       Better would be to produce a test suite for each resolved file, rather than for the value
@@ -409,7 +409,22 @@ function Write-NUnitTestCaseAttributes($TestResult, [System.Xml.XmlWriter] $XmlW
     }
 }
 function Get-RunTimeEnvironment() {
-    $osSystemInformation = (& $SafeCommands['Get-WmiObject'] Win32_OperatingSystem)
+    # based on what we found during startup, use the appropriate cmdlet
+    if ( $SafeCommands['Get-CimInstance'] -ne $null )
+    {
+        $osSystemInformation = (& $SafeCommands['Get-CimInstance'] Win32_OperatingSystem)
+    }
+    elseif ( $SafeCommands['Get-WmiObject'] -ne $null )
+    {
+        $osSystemInformation = (& $SafeCommands['Get-WmiObject'] Win32_OperatingSystem)
+    }
+    else
+    {
+        $osSystemInformation = @{
+            Name = "Unknown"
+            Version = "0.0.0.0"
+            }
+    }
     @{
         'nunit-version' = '2.5.8.0'
         'os-version' = $osSystemInformation.Version

@@ -24,20 +24,30 @@ InModuleScope Pester {
         It "returns true if the statement throws an exception and the actual error text matches the expected error pattern" {
             Test-PositiveAssertion (PesterThrow { throw "expected error"} "error")
         }
+
+        It "throws ArgumentException if null ScriptBlock is provided" {
+            try {
+                Test-PositiveAssertion (PesterThrow $null)
+                throw "Should throw exception, but no exception was thrown."
+            }
+            catch [ArgumentException] {
+                #do nothing. we expect argument exception to happen
+            }
+        }
     }
 
     Describe "Get-DoMessagesMatch" {
         It "returns true if the actual message is the same as the expected message" {
             $expectedErrorMessage = "expected"
-            $actualErrorMesage = "expected"
-            $result = Get-DoMessagesMatch $actualErrorMesage $expectedErrorMessage
+            $actualErrorMessage = "expected"
+            $result = Get-DoMessagesMatch $actualErrorMessage $expectedErrorMessage
             $result | Should Be $True
         }
 
         It "returns false if the actual message is not the same as the expected message" {
             $expectedErrorMessage = "some expected message"
-            $actualErrorMesage = "unexpected"
-            $result = Get-DoMessagesMatch $actualErrorMesage $expectedErrorMessage
+            $actualErrorMessage = "unexpected"
+            $result = Get-DoMessagesMatch $actualErrorMessage $expectedErrorMessage
             $result | Should Be $False
         }
 
@@ -47,9 +57,9 @@ InModuleScope Pester {
         }
 
         It "returns true if the expected error is contained in the actual message" {
-            $actualErrorMesage = "this is a long error message"
+            $actualErrorMessage = "this is a long error message"
             $expectedText = "long error"
-            $result = Get-DoMessagesMatch $actualErrorMesage $expectedText
+            $result = Get-DoMessagesMatch $actualErrorMessage $expectedText
             $result | Should Be $True
         }
     }
